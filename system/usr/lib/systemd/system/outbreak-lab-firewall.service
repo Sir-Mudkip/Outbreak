@@ -1,0 +1,14 @@
+[Unit]
+Description=Outbreak lab network containment rules
+Documentation=file:///usr/share/outbreak/lab-firewall.nft
+After=firewalld.service
+Before=virtnetworkd.service virtqemud.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/nft -f /usr/share/outbreak/lab-firewall.nft
+ExecStop=/usr/bin/nft destroy table inet outbreak_labs
+
+[Install]
+WantedBy=multi-user.target

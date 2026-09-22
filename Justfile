@@ -40,7 +40,7 @@ lint:
             [ -f "$f" ] || continue
             case "$f" in
                 *.sh) echo "$f" ;;
-                *) head -c2 "$f" 2>/dev/null | grep -q '#!' && echo "$f" ;;
+                *) head -n1 "$f" 2>/dev/null | grep -qE '^#!.*\b(sh|bash|dash|ksh)$' && echo "$f" ;;
             esac
         done
     )
@@ -94,3 +94,5 @@ test-image $target_image=image_name $tag=default_tag:
     img="localhost/${target_image}:${tag}"
     echo "sshd config parses:"
     ${PODMAN} run --rm "${img}" bash -c 'ssh-keygen -A >/dev/null && /usr/sbin/sshd -t'
+    echo "lab firewall ruleset parses:"
+    ${PODMAN} run --rm --cap-add NET_ADMIN "${img}" nft -c -f /usr/share/outbreak/lab-firewall.nft

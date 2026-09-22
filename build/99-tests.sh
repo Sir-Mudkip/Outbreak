@@ -29,4 +29,18 @@ if firewall-offline-cmd --zone=outbreak --list-services | grep -cwE 'ssh|cockpit
 fi
 firewall-offline-cmd --zone=outbreak --list-services | grep -cw https >/dev/null
 
+# --- Virtualization and lab containment (Task 3) ---
+for package in libvirt-daemon-kvm libvirt-daemon-config-network libvirt-client qemu-kvm \
+    virt-install swtpm swtpm-tools vagrant vagrant-libvirt cockpit-machines; do
+    rpm -q "${package}" >/dev/null || { echo "Missing package: ${package}"; exit 1; }
+done
+for unit in virtqemud.socket virtnetworkd.socket virtstoraged.socket virtnodedevd.socket \
+    virtsecretd.socket virtproxyd.socket outbreak-lab-firewall.service \
+    libvirt-workaround.service swtpm-workaround.service; do
+    systemctl is-enabled --quiet "${unit}" || { echo "Not enabled: ${unit}"; exit 1; }
+done
+semodule -l | grep -cx swtpm_libvirt >/dev/null
+test -f /usr/share/outbreak/lab-firewall.nft
+grep -qx 'net.ipv4.ip_forward = 1' /usr/lib/sysctl.d/60-outbreak-forwarding.conf
+
 echo "::endgroup::"
