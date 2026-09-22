@@ -43,4 +43,14 @@ semodule -l | grep -cx swtpm_libvirt >/dev/null
 test -f /usr/share/outbreak/lab-firewall.nft
 grep -qx 'net.ipv4.ip_forward = 1' /usr/lib/sysctl.d/60-outbreak-forwarding.conf
 
+# --- GPU compute (Task 4) ---
+for package in hashcat rocm-hip rocm-runtime rocm-opencl rocm-smi rocminfo nfs-utils; do
+    rpm -q "${package}" >/dev/null || { echo "Missing package: ${package}"; exit 1; }
+done
+ldconfig -p | grep -c 'libamdhip64.so.7 ' >/dev/null
+ldconfig -p | grep -c 'libhiprtc.so.7 ' >/dev/null
+# hashcat creates state under $HOME; keep it out of the image.
+HOME=/tmp/hashcat-test hashcat --version | grep -cE '^v7\.' >/dev/null
+rm -rf /tmp/hashcat-test
+
 echo "::endgroup::"

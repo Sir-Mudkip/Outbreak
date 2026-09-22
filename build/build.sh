@@ -16,5 +16,6 @@ echo "::endgroup::"
 /ctx/build/00-image-info.sh
 /ctx/build/10-admin.sh
 /ctx/build/20-virt.sh
+/ctx/build/30-gpu.sh
 /ctx/build/98-clean-stage.sh
 /ctx/build/99-tests.sh
