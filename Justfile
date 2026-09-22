@@ -79,8 +79,9 @@ build $target_image=image_name $tag=default_tag:
 clean-images:
     #!/usr/bin/bash
     set -uo pipefail
+    fedora_version=$(grep -E '^ARG FEDORA_VERSION=' Containerfile | head -n1 | grep -oE '[0-9]+')
     ${PODMAN} rmi -f "localhost/${image_name}:${default_tag}" 2>/dev/null || true
     ${PODMAN} image prune -f --filter "label=org.opencontainers.image.title=${image_name}" || true
-    ${PODMAN} rmi -f "quay.io/fedora/fedora-bootc:44" 2>/dev/null || true
+    ${PODMAN} rmi -f "quay.io/fedora/fedora-bootc:${fedora_version}" 2>/dev/null || true
     echo "Remaining images:"
     ${PODMAN} images
