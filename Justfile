@@ -85,3 +85,12 @@ clean-images:
     ${PODMAN} rmi -f "quay.io/fedora/fedora-bootc:${fedora_version}" 2>/dev/null || true
     echo "Remaining images:"
     ${PODMAN} images
+
+# Post-build checks that need capabilities the build sandbox lacks
+[group('Image')]
+test-image $target_image=image_name $tag=default_tag:
+    #!/usr/bin/bash
+    set -euo pipefail
+    img="localhost/${target_image}:${tag}"
+    echo "sshd config parses:"
+    ${PODMAN} run --rm "${img}" bash -c 'ssh-keygen -A >/dev/null && /usr/sbin/sshd -t'

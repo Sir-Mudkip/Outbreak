@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<zone target="default">
+  <short>Outbreak LAN</short>
+  <description>LAN-facing zone. Only Caddy (HTTP/HTTPS) and Tailscale's peer port are open. SSH and Cockpit are reachable over Tailscale only (tailscale0 is in the trusted zone). See docs/networking.md.</description>
+  <service name="http"/>
+  <service name="https"/>
+  <service name="dhcpv6-client"/>
+  <port port="41641" protocol="udp"/>
+</zone>
