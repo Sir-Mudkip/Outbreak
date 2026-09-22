@@ -1,9 +1,12 @@
 #!/usr/bin/nft -f
 # Lab containment. See docs/networking.md.
 # Lab VMs (any virbr* bridge) may reach the internet and each other, but not
-# the LAN, the tailnet, or services on this host. Replies to connections that
-# started outside a lab (e.g. from the owner's laptop over Tailscale) pass.
-# A drop here is final even if libvirt's or firewalld's own tables accept.
+# the LAN, the tailnet, or services on this host. Only IPv4 leaves a lab;
+# IPv6 forwarded out of a lab is dropped. New connections into a lab may only
+# originate from another lab bridge or from the tailnet (tailscale0); replies
+# to connections that started outside a lab (e.g. from the owner's laptop
+# over Tailscale) pass. A drop here is final even if libvirt's or firewalld's
+# own tables accept.
 
 destroy table inet outbreak_labs
 
@@ -14,18 +17,13 @@ table inet outbreak_labs {
         elements = { 10.0.0.0/8, 100.64.0.0/10, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16 }
     }
 
-    set private6 {
-        type ipv6_addr
-        flags interval
-        elements = { fc00::/7, fe80::/10 }
-    }
-
     chain forward {
         type filter hook forward priority filter - 10; policy accept;
         ct state established,related accept
+        oifname "virbr*" iifname != { "virbr*", "tailscale0" } ct state new drop
         iifname "virbr*" oifname "virbr*" accept
+        iifname "virbr*" meta nfproto ipv6 drop
         iifname "virbr*" ip daddr @private4 drop
-        iifname "virbr*" ip6 daddr @private6 drop
     }
 
     chain input {

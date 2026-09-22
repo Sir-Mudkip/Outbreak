@@ -36,10 +36,14 @@ Authenticate once after install with `sudo tailscale up`.
 | From a lab VM to… | Result |
 |---|---|
 | The internet | Allowed (libvirt NAT); needed for GOAD provisioning |
-| Another lab bridge | Allowed |
+| Another lab bridge | Not blocked by this table (libvirt's own NAT rules still reject new traffic between NAT networks) |
 | LAN, tailnet, link-local (RFC 1918, 100.64/10, fc00::/7…) | Dropped |
 | This host | Only DHCP and DNS (libvirt's dnsmasq) and ICMP; everything else dropped |
 | Replies to connections started from outside (your laptop over Tailscale) | Allowed |
+| New connections into a lab from anywhere except the tailnet or another lab bridge | Dropped |
+
+Lab traffic leaving a lab is IPv4-only: any IPv6 forwarded out of a `virbr*`
+bridge is dropped, so a lab VM cannot reach the LAN or tailnet over IPv6.
 
 The table uses its own base chains at priority `filter - 10`. In nftables a
 `drop` in any table is final, so libvirt's and firewalld's `accept` rules
