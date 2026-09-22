@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-22-outbreak-server-design.md`
 
-**Scope:** This plan implements spec Layer 1 (the image), Layer 4 (CI and signing) and Layer 5 (installation). Layer 2 (services, in the private `outbreak-services` repo) and Layer 3 (GOAD and Kubernetes lab setup on the running server) get their own plans later. The image-side prerequisites for those layers (service account, `ujust deploy-services`, lab network containment) are in this plan.
+**Scope:** This plan implements spec Layer 1 (the image), Layer 4 (CI and signing) and Layer 5 (installation). Layer 2 (services, in the private `outbreak-services` repo) and Layer 3 (GOAD and Kubernetes lab setup on the running server) get their own plans later. The image-side prerequisites for those layers (the rootless service account and lab network containment) are in this plan; how Quadlets get deployed is decided in the services plan.
 
 ## Global Constraints
 
@@ -46,7 +46,7 @@
 
 ```
 Containerfile                         base image, ctx stage, runs build.sh, bootc lint
-Justfile                              check / fix / lint / build / test-image / clean-images / tag-images / verify / build-iso
+Justfile                              check / fix / lint / build / test-image / clean-images / tag-images / verify / build-iso / test-install
 CLAUDE.md, AGENTS.md -> CLAUDE.md     rules for agents working in this repo
 .gitignore, .hadolint.yaml
 cosign.pub                            public signing key (Task 7)
@@ -74,7 +74,7 @@ system/
   usr/lib/systemd/system/outbreak-lab-firewall.service, outbreak-stage-update.{service,timer},
                          libvirt-workaround.service, swtpm-workaround.service
   usr/share/outbreak/lab-firewall.nft
-  usr/share/outbreak/just/{main,services,updates,system}.just
+  usr/share/outbreak/just/{main,updates,system}.just
 iso/config.example.toml               template; iso/config.toml is local-only
 .github/workflows/{build,validate,clean}.yml
 docs/README.md, docs/build-stages.md, docs/networking.md, docs/updates.md, docs/signing.md, docs/install.md
@@ -1023,15 +1023,15 @@ just clean-images
 
 ---
 
-### Task 5: Service account, ujust and `ujust deploy-services`
+### Task 5: Rootless service account and ujust
 
 **Files:**
-- Create: `build/40-services.sh`, `system/usr/bin/ujust`, `system/usr/share/outbreak/just/main.just`, `system/usr/share/outbreak/just/services.just`, `system/usr/lib/sysusers.d/outbreak-svc.conf`, `system/usr/lib/tmpfiles.d/outbreak-svc.conf`, `system/etc/subuid`, `system/etc/subgid`, `system/usr/lib/sysctl.d/61-outbreak-unprivileged-ports.conf`
+- Create: `build/40-services.sh`, `system/usr/bin/ujust`, `system/usr/share/outbreak/just/main.just`, `system/usr/lib/sysusers.d/outbreak-svc.conf`, `system/usr/lib/tmpfiles.d/outbreak-svc.conf`, `system/etc/subuid`, `system/etc/subgid`, `system/usr/lib/sysctl.d/61-outbreak-unprivileged-ports.conf`
 - Modify: `build/build.sh`, `build/99-tests.sh`, `docs/build-stages.md`
 
 **Interfaces:**
 - Consumes: Task 1 pipeline.
-- Produces: system user `svc` with **UID/GID 880**, in groups `render` and `video`, home `/var/lib/svc`, lingering, subordinate IDs `1000000000:65536`. Service state root `/var/lib/outbreak` owned by `svc`. Contract with the private services repo: rootless Quadlet files live in `<repo>/quadlets/` and are deployed to `/etc/containers/systemd/users/880/`. `ujust` entry point `/usr/share/outbreak/just/main.just`, which later tasks extend with `import` lines.
+- Produces: system user `svc` with **UID/GID 880**, in groups `render` and `video`, home `/var/lib/svc`, lingering, subordinate IDs `1000000000:65536`. Service state root `/var/lib/outbreak` owned by `svc`. Rootless Quadlets for `svc` are read from `/etc/containers/systemd/users/880/`; how they get there is the services plan's decision. `ujust` entry point `/usr/share/outbreak/just/main.just`, which Tasks 6 and 7 extend with `import` lines.
 
 - [ ] **Step 1: Add the failing tests**
 
@@ -1048,7 +1048,7 @@ grep -qx 'svc:1000000000:65536' /etc/subuid
 grep -qx 'svc:1000000000:65536' /etc/subgid
 grep -q '^f /var/lib/systemd/linger/svc ' /usr/lib/tmpfiles.d/outbreak-svc.conf
 grep -qx 'net.ipv4.ip_unprivileged_port_start = 80' /usr/lib/sysctl.d/61-outbreak-unprivileged-ports.conf
-just --justfile /usr/share/outbreak/just/main.just --list | grep -c 'deploy-services' >/dev/null
+just --justfile /usr/share/outbreak/just/main.just --list >/dev/null
 ```
 
 - [ ] **Step 2: Run the build to verify the tests fail**
@@ -1097,7 +1097,7 @@ net.ipv4.ip_unprivileged_port_start = 80
 exec /usr/bin/just --justfile /usr/share/outbreak/just/main.just --working-directory "${PWD}" "${@}"
 ```
 
-`system/usr/share/outbreak/just/main.just`:
+`system/usr/share/outbreak/just/main.just` (Tasks 6 and 7 add `import` lines for their recipe files):
 
 ```just
 set allow-duplicate-recipes := true
@@ -1105,38 +1105,6 @@ set ignore-comments := true
 
 _default:
     @ujust --list --list-heading $'Available commands:\n' --list-prefix $' - '
-
-import "/usr/share/outbreak/just/services.just"
-```
-
-`system/usr/share/outbreak/just/services.just`:
-
-```just
-# Deploy rootless Quadlets from a checkout of the private outbreak-services repo
-[group('Services')]
-deploy-services repo=(env("HOME") + "/outbreak-services"):
-    #!/usr/bin/bash
-    set -euo pipefail
-    src="{{ repo }}/quadlets"
-    if [[ ! -d "${src}" ]]; then
-        echo "No quadlets/ directory in {{ repo }}"
-        exit 1
-    fi
-    uid="$(id -u svc)"
-    dest="/etc/containers/systemd/users/${uid}"
-    sudo install -d -m 0755 "${dest}"
-    # Replace the directory's contents so removed Quadlets disappear too.
-    sudo find "${dest}" -mindepth 1 -delete
-    sudo cp -a "${src}/." "${dest}/"
-    sudo chmod -R u=rwX,go=rX "${dest}"
-    sudo systemctl --user -M svc@ daemon-reload
-    echo "Deployed $(find "${dest}" -type f | wc -l) files to ${dest}."
-    echo "Start a service with: sudo systemctl --user -M svc@ start <name>.service"
-
-# Show the state of the rootless services
-[group('Services')]
-services-status:
-    sudo systemctl --user -M svc@ list-units --type=service --all
 ```
 
 - [ ] **Step 5: Write the stage**
@@ -1185,7 +1153,7 @@ Expected: exits 0.
 Add to `docs/build-stages.md`:
 
 ```markdown
-| `40-services.sh` | Installs `just` for `ujust`. The rootless service account comes from `system/`: `svc` (UID/GID 880, groups `render` and `video`, lingering, subordinate IDs `1000000000:65536`), state under `/var/lib/outbreak/`, and `ip_unprivileged_port_start=80` so rootless Caddy can bind 80/443. `ujust deploy-services [path]` copies `<path>/quadlets/` from the private `outbreak-services` checkout to `/etc/containers/systemd/users/880/` and reloads the svc user's systemd. |
+| `40-services.sh` | Installs `just` for `ujust`. The rootless service account comes from `system/`: `svc` (UID/GID 880, groups `render` and `video`, lingering, subordinate IDs `1000000000:65536`), state under `/var/lib/outbreak/`, and `ip_unprivileged_port_start=80` so rootless Caddy can bind 80/443. Rootless Quadlets for `svc` go in `/etc/containers/systemd/users/880/`; deploying them is handled outside the image (see the services plan). |
 ```
 
 - [ ] **Step 9: Lint and commit**
@@ -1193,7 +1161,7 @@ Add to `docs/build-stages.md`:
 ```bash
 just lint && just check
 git add -A
-git commit -m "feat(services): add the rootless svc account and ujust deploy-services
+git commit -m "feat(services): add the rootless svc account and ujust
 
 Assisted-by: Claude Opus 5.5 via Claude Code
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -1300,7 +1268,7 @@ update-now:
     sudo bootc status
 ```
 
-Add to `system/usr/share/outbreak/just/main.just` after the existing import:
+Append to `system/usr/share/outbreak/just/main.just`:
 
 ```just
 import "/usr/share/outbreak/just/updates.just"
@@ -1928,7 +1896,7 @@ id svc                                                # uid=880(svc) ... render,
 id -nG                                                # includes wheel libvirt render video
 ssh -o PasswordAuthentication=yes -o PubkeyAuthentication=no -o BatchMode=yes localhost true \
   && echo "FAIL: password SSH accepted" || echo "ok: password SSH refused"
-ujust --list                                          # deploy-services, update-status, enforce-signatures
+ujust --list                                          # update-status, update-now, enforce-signatures
 sudo systemctl start outbreak-stage-update.service && ujust update-status
 ```
 
@@ -1986,8 +1954,9 @@ Log in on the console or over SSH from the LAN console session, then:
 4. Check whether Cockpit's Overview page shows the staged-update notice
    (`ujust update-now` when an update exists). If not, rely on the SSH login
    notice and `ujust update-status`.
-5. Create the Podman secrets for services, clone the private
-   `outbreak-services` repo and run `ujust deploy-services` (services plan).
+5. Create the Podman secrets for services and deploy the Quadlets from the
+   private `outbreak-services` repo to `/etc/containers/systemd/users/880/`
+   (services plan).
 6. Mount the NAS share at `/mnt/nas/data` and do a test *arr import to
    confirm hardlinks work (services plan).
 7. When the second SSD is fitted, create the libvirt storage pool on it

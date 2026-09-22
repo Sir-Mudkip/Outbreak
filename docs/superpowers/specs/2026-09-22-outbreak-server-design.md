@@ -33,7 +33,7 @@ What the server does:
 Two repositories, deliberately split:
 
 - **`Outbreak` (public)** — the OS image only: packages, drivers, firewall
-  defaults, systemd units, a generic `ujust deploy-services`. It does not
+  defaults, systemd units and the rootless service account. It does not
   describe which services run.
 - **`outbreak-services` (private)** — Quadlet files, Caddy configuration and
   per-service settings. Hosted on the NAS or as a private GitHub repo.
@@ -78,8 +78,9 @@ Ollama's ROCm libraries (bundled in its container).
 ## Layer 2 — services (private repo)
 
 Run as rootless Podman Quadlets under a dedicated service account (in the
-`render` and `video` groups). Deployed to `/etc/containers/systemd/` by
-`ujust deploy-services`. Updated daily by `podman auto-update` with automatic
+`render` and `video` groups). Quadlets for that account live in
+`/etc/containers/systemd/users/<uid>/`; how they are deployed from the private
+repo is decided in the services plan. Updated daily by `podman auto-update` with automatic
 rollback on failed health checks.
 
 | Group | Services | Reachable from |
@@ -195,7 +196,7 @@ First-boot checklist:
 1. `tailscale up`
 2. Create Podman secrets (Cloudflare tunnel token, AirVPN WireGuard keys,
    LiteLLM master key, registry credentials, Cloudflare DNS API token).
-3. Clone `outbreak-services`; run `ujust deploy-services`.
+3. Deploy the Quadlets from `outbreak-services` (method set by the services plan).
 4. GPU checks: `rocm-smi`, `hashcat -I`, `hashcat -b`.
 5. Mount the NAS; do a test *arr import to confirm hardlinks work.
 6. Create the libvirt storage pool once the second SSD is fitted.
