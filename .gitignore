@@ -1,0 +1,4 @@
+cosign.key
+iso/config.toml
+output/
+.claude/
