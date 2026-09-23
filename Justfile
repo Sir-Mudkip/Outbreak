@@ -18,6 +18,8 @@ check:
     done
     echo "Checking syntax: Justfile"
     just --unstable --fmt --check -f Justfile
+    echo "Checking cosign.pub matches the key baked into the image"
+    cmp cosign.pub system/usr/lib/pki/containers/outbreak.pub
 
 # Fix Justfile and ujust formatting
 [group('Just')]
@@ -98,3 +100,10 @@ test-image $target_image=image_name $tag=default_tag:
     ${PODMAN} run --rm --cap-add NET_ADMIN "${img}" nft -c -f /usr/share/outbreak/lab-firewall.nft
     echo "svc account resolves after sysusers:"
     ${PODMAN} run --rm "${img}" bash -c 'systemd-sysusers && id svc | grep -q "uid=880(svc)" && id -nG svc | grep -qw render && id -nG svc | grep -qw video'
+
+# Verify a published image's cosign signature
+[group('Image')]
+verify $tag=default_tag:
+    #!/usr/bin/bash
+    set -euo pipefail
+    cosign verify --key cosign.pub "ghcr.io/${REPO_ORG,,}/${image_name}:${tag}"

@@ -1,0 +1,32 @@
+{
+    "default": [
+        {
+            "type": "reject"
+        }
+    ],
+    "transports": {
+        "docker": {
+            "ghcr.io/sir-mudkip/outbreak": [
+                {
+                    "type": "sigstoreSigned",
+                    "keyPath": "/usr/lib/pki/containers/outbreak.pub",
+                    "signedIdentity": {
+                        "type": "matchRepository"
+                    }
+                }
+            ],
+            "": [
+                {
+                    "type": "insecureAcceptAnything"
+                }
+            ]
+        },
+        "docker-daemon": { "": [ { "type": "insecureAcceptAnything" } ] },
+        "containers-storage": { "": [ { "type": "insecureAcceptAnything" } ] },
+        "dir": { "": [ { "type": "insecureAcceptAnything" } ] },
+        "oci": { "": [ { "type": "insecureAcceptAnything" } ] },
+        "oci-archive": { "": [ { "type": "insecureAcceptAnything" } ] },
+        "docker-archive": { "": [ { "type": "insecureAcceptAnything" } ] },
+        "tarball": { "": [ { "type": "insecureAcceptAnything" } ] }
+    }
+}

@@ -87,4 +87,11 @@ bash -n /usr/libexec/outbreak/update-motd
 grep -qx 'ExecStart=/usr/bin/bootc upgrade --quiet' /usr/lib/systemd/system/outbreak-stage-update.service
 just --justfile /usr/share/outbreak/just/main.just --list | grep -c 'update-status' >/dev/null
 
+# --- Signing (Task 7) ---
+grep -q 'BEGIN PUBLIC KEY' /usr/lib/pki/containers/outbreak.pub
+jq -e '.transports.docker["ghcr.io/sir-mudkip/outbreak"][0].type == "sigstoreSigned"' /etc/containers/policy.json
+jq -e '.transports.docker["ghcr.io/sir-mudkip/outbreak"][0].keyPath == "/usr/lib/pki/containers/outbreak.pub"' /etc/containers/policy.json
+grep -q 'use-sigstore-attachments: true' /etc/containers/registries.d/outbreak.yaml
+just --justfile /usr/share/outbreak/just/main.just --list | grep -c 'enforce-signatures' >/dev/null
+
 echo "::endgroup::"
