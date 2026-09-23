@@ -37,7 +37,7 @@
 ## Deviations from the spec (flag to the owner at hand-off)
 
 1. **ISO disk selection is interactive.** The spec said the ISO config sets the disk layout on the 990 Pro. With a second SSD planned, an unattended `clearpart` could wipe the wrong disk, so the ISO sets up the user and SSH key but lets Anaconda ask which disk to use.
-2. **Pending-update notice:** implemented as a login message (`/run/motd.d`) plus `ujust update-status`. Whether Cockpit's Overview page shows it is checked on the hardware (Task 9); the spec assumed it would.
+2. **Login notice removed:** the owner asked for it to be dropped — this is a headless server. Staged updates are checked with `ujust update-status`.
 3. **CI → LAN registry push is deferred** to the services plan, because the registry does not exist yet.
 4. **Tailnet → lab routing:** libvirt NAT networks reject new inbound connections from outside the host, so reaching lab VMs over a Tailscale subnet route needs route-mode (or `open`) libvirt networks. That is lab configuration, not image content, and belongs to the labs plan. This plan ships the containment rules and IP forwarding those networks will rely on.
 5. **Tailscale comes from Fedora's own repo** (1.98.x), not `pkgs.tailscale.com`, so the image adds no third-party repositories.
@@ -66,7 +66,6 @@ system/
   etc/containers/policy.json, etc/containers/registries.d/outbreak.yaml
   etc/subuid, etc/subgid
   usr/bin/ujust
-  usr/libexec/outbreak/update-motd
   usr/lib/pki/containers/outbreak.pub
   usr/lib/sysctl.d/60-outbreak-forwarding.conf, 61-outbreak-unprivileged-ports.conf
   usr/lib/sysusers.d/outbreak-svc.conf
@@ -1173,12 +1172,12 @@ just clean-images
 ### Task 6: Stage updates automatically, reboot manually
 
 **Files:**
-- Create: `build/50-updates.sh`, `system/usr/lib/systemd/system/outbreak-stage-update.service`, `system/usr/lib/systemd/system/outbreak-stage-update.timer`, `system/usr/libexec/outbreak/update-motd`, `system/usr/share/outbreak/just/updates.just`, `docs/updates.md`
+- Create: `build/50-updates.sh`, `system/usr/lib/systemd/system/outbreak-stage-update.service`, `system/usr/lib/systemd/system/outbreak-stage-update.timer`, `system/usr/share/outbreak/just/updates.just`, `docs/updates.md`
 - Modify: `build/build.sh`, `build/99-tests.sh`, `system/usr/share/outbreak/just/main.just`, `docs/build-stages.md`
 
 **Interfaces:**
 - Consumes: Task 5 (`main.just`).
-- Produces: enabled `outbreak-stage-update.timer`; masked `bootc-fetch-apply-updates.timer`; `/run/motd.d/50-outbreak-update` present while an update is staged; `ujust update-status`.
+- Produces: enabled `outbreak-stage-update.timer`; masked `bootc-fetch-apply-updates.timer`; `ujust update-status`.
 
 - [ ] **Step 1: Add the failing tests**
 
@@ -1188,8 +1187,12 @@ In `build/99-tests.sh`, before the final `echo "::endgroup::"`:
 # --- Update staging (Task 6) ---
 systemctl is-enabled --quiet outbreak-stage-update.timer
 [[ "$(systemctl is-enabled bootc-fetch-apply-updates.timer || true)" == "masked" ]]
-test -x /usr/libexec/outbreak/update-motd
-bash -n /usr/libexec/outbreak/update-motd
+if [[ -e /usr/libexec/outbreak/update-motd ]]; then
+    echo "update-motd must not be present: headless server, no login notice"; exit 1
+fi
+if grep -q 'ExecStartPost' /usr/lib/systemd/system/outbreak-stage-update.service; then
+    echo "outbreak-stage-update.service must not have an ExecStartPost"; exit 1
+fi
 grep -qx 'ExecStart=/usr/bin/bootc upgrade --quiet' /usr/lib/systemd/system/outbreak-stage-update.service
 just --justfile /usr/share/outbreak/just/main.just --list | grep -c 'update-status' >/dev/null
 ```
@@ -1199,7 +1202,7 @@ just --justfile /usr/share/outbreak/just/main.just --list | grep -c 'update-stat
 Run: `git add -A && just build`
 Expected: FAIL at `systemctl is-enabled --quiet outbreak-stage-update.timer`.
 
-- [ ] **Step 3: Add the units and the notice script**
+- [ ] **Step 3: Add the units**
 
 `system/usr/lib/systemd/system/outbreak-stage-update.service`:
 
@@ -1214,7 +1217,6 @@ After=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/bootc upgrade --quiet
-ExecStartPost=/usr/libexec/outbreak/update-motd
 ```
 
 `system/usr/lib/systemd/system/outbreak-stage-update.timer`:
@@ -1230,27 +1232,6 @@ Persistent=true
 
 [Install]
 WantedBy=timers.target
-```
-
-`system/usr/libexec/outbreak/update-motd` (mode 0755):
-
-```bash
-#!/usr/bin/bash
-# Writes a login notice while a staged update is waiting for a reboot.
-set -euo pipefail
-
-MOTD="/run/motd.d/50-outbreak-update"
-status="$(bootc status --format=json)"
-staged="$(jq -r '.status.staged.image.image.image // empty' <<<"${status}")"
-
-if [[ -n "${staged}" ]]; then
-    version="$(jq -r '.status.staged.image.version // "unknown version"' <<<"${status}")"
-    install -d -m 0755 /run/motd.d
-    printf 'Outbreak update staged: %s (%s), checked %s.\nReboot when convenient to apply it: sudo systemctl reboot\n' \
-        "${version}" "${staged}" "$(date -u +%F)" >"${MOTD}"
-else
-    rm -f "${MOTD}"
-fi
 ```
 
 `system/usr/share/outbreak/just/updates.just`:
@@ -1315,9 +1296,8 @@ Expected: PASS.
   calls `bootc upgrade --quiet`: it downloads and stages the new image. The
   staged image is applied at the **next reboot, whenever that happens**.
 - `bootc-fetch-apply-updates.timer` is masked: it would reboot automatically.
-- While an update is staged, `/run/motd.d/50-outbreak-update` prints a notice
-  at SSH login. `ujust update-status` shows the booted, staged and rollback
-  images; `ujust update-now` stages immediately.
+- A staged update is visible with `ujust update-status`, which shows the
+  booted, staged and rollback images; `ujust update-now` stages immediately.
 - To undo a bad update: `sudo bootc rollback`, then reboot.
 
 Reboot when nothing long-running is active (hashcat can resume with
@@ -1951,15 +1931,12 @@ Log in on the console or over SSH from the LAN console session, then:
 3. GPU checks: `rocm-smi` lists the 7900 XTX; `rocminfo | grep gfx1100`;
    `hashcat -I` shows the card under the HIP backend; `hashcat -b -m 1000`
    runs a benchmark.
-4. Check whether Cockpit's Overview page shows the staged-update notice
-   (`ujust update-now` when an update exists). If not, rely on the SSH login
-   notice and `ujust update-status`.
-5. Create the Podman secrets for services and deploy the Quadlets from the
+4. Create the Podman secrets for services and deploy the Quadlets from the
    private `outbreak-services` repo to `/etc/containers/systemd/users/880/`
    (services plan).
-6. Mount the NAS share at `/mnt/nas/data` and do a test *arr import to
+5. Mount the NAS share at `/mnt/nas/data` and do a test *arr import to
    confirm hardlinks work (services plan).
-7. When the second SSD is fitted, create the libvirt storage pool on it
+6. When the second SSD is fitted, create the libvirt storage pool on it
    (labs plan).
 ```
 

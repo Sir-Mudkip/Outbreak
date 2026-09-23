@@ -69,8 +69,8 @@ Contents:
   Caddy needs; Tailscale interface trusted; lab network rules (Layer 3).
 - **Monitoring** — Cockpit + PCP only. No dashboards, no alerting.
 - **Updates** — a daily timer stages new images (`bootc upgrade` download
-  only). Reboots are manual. A pending update is shown in Cockpit and a login
-  message.
+  only). Reboots are manual. Staged updates are checked with
+  `ujust update-status` (no login notice; headless server).
 
 Not in the image: services, GOAD and its Ansible, Kubernetes, LLM models,
 Ollama's ROCm libraries (bundled in its container).

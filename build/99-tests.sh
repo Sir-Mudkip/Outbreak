@@ -82,8 +82,12 @@ fi
 # --- Update staging (Task 6) ---
 systemctl is-enabled --quiet outbreak-stage-update.timer
 [[ "$(systemctl is-enabled bootc-fetch-apply-updates.timer || true)" == "masked" ]]
-test -x /usr/libexec/outbreak/update-motd
-bash -n /usr/libexec/outbreak/update-motd
+if [[ -e /usr/libexec/outbreak/update-motd ]]; then
+    echo "update-motd must not be present: headless server, no login notice"; exit 1
+fi
+if grep -q 'ExecStartPost' /usr/lib/systemd/system/outbreak-stage-update.service; then
+    echo "outbreak-stage-update.service must not have an ExecStartPost"; exit 1
+fi
 grep -qx 'ExecStart=/usr/bin/bootc upgrade --quiet' /usr/lib/systemd/system/outbreak-stage-update.service
 just --justfile /usr/share/outbreak/just/main.just --list | grep -c 'update-status' >/dev/null
 

@@ -8,4 +8,3 @@ After=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/bootc upgrade --quiet
-ExecStartPost=/usr/libexec/outbreak/update-motd
