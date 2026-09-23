@@ -64,5 +64,19 @@ grep -qx 'svc:1000000000:65536' /etc/subgid
 grep -q '^f /var/lib/systemd/linger/svc ' /usr/lib/tmpfiles.d/outbreak-svc.conf
 grep -qx 'net.ipv4.ip_unprivileged_port_start = 80' /usr/lib/sysctl.d/61-outbreak-unprivileged-ports.conf
 just --justfile /usr/share/outbreak/just/main.just --list >/dev/null
+# render/video must be real /etc/group lines (not just resolvable via
+# nss-altfiles from /usr/lib/group) or systemd-sysusers can't add svc as a
+# member of them at boot.
+grep -q '^render:' /etc/group
+grep -q '^video:' /etc/group
+# svc must not be baked into the image; some package's RPM scriptlet can
+# create it prematurely mid-build, and 40-services.sh must strip that so the
+# account is created cleanly by systemd-sysusers at first real boot.
+if grep -q '^svc:' /etc/passwd; then
+    echo "svc must not be created during the build"; exit 1
+fi
+if grep -q '^svc:' /etc/group; then
+    echo "svc group must not be created during the build"; exit 1
+fi
 
 echo "::endgroup::"
