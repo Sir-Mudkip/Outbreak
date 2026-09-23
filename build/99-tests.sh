@@ -53,4 +53,16 @@ ldconfig -p | grep -c 'libhiprtc.so.7 ' >/dev/null
 HOME=/tmp/hashcat-test hashcat --version | grep -cE '^v7\.' >/dev/null
 rm -rf /tmp/hashcat-test
 
+# --- Service account and ujust (Task 5) ---
+rpm -q just >/dev/null
+test -x /usr/bin/ujust
+grep -qx 'u svc 880:880 "Outbreak rootless services" /var/lib/svc /usr/sbin/nologin' /usr/lib/sysusers.d/outbreak-svc.conf
+grep -qx 'm svc render' /usr/lib/sysusers.d/outbreak-svc.conf
+grep -qx 'm svc video' /usr/lib/sysusers.d/outbreak-svc.conf
+grep -qx 'svc:1000000000:65536' /etc/subuid
+grep -qx 'svc:1000000000:65536' /etc/subgid
+grep -q '^f /var/lib/systemd/linger/svc ' /usr/lib/tmpfiles.d/outbreak-svc.conf
+grep -qx 'net.ipv4.ip_unprivileged_port_start = 80' /usr/lib/sysctl.d/61-outbreak-unprivileged-ports.conf
+just --justfile /usr/share/outbreak/just/main.just --list >/dev/null
+
 echo "::endgroup::"

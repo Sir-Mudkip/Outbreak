@@ -1,0 +1,2 @@
+#!/usr/bin/bash
+exec /usr/bin/just --justfile /usr/share/outbreak/just/main.just --working-directory "${PWD}" "${@}"

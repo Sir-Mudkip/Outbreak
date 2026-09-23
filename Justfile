@@ -96,3 +96,10 @@ test-image $target_image=image_name $tag=default_tag:
     ${PODMAN} run --rm "${img}" bash -c 'ssh-keygen -A >/dev/null && /usr/sbin/sshd -t'
     echo "lab firewall ruleset parses:"
     ${PODMAN} run --rm --cap-add NET_ADMIN "${img}" nft -c -f /usr/share/outbreak/lab-firewall.nft
+    echo "svc account resolves after sysusers:"
+    # --root=/ makes systemd-sysusers check the real /etc/group instead of
+    # nss-systemd's synthesized (not-yet-persisted) entries for the standard
+    # render/video groups, which without a running PID 1 otherwise makes it
+    # skip writing svc's membership. systemd-sysusers.service takes no args
+    # and runs after PID 1 is up, so real boot is unaffected either way.
+    ${PODMAN} run --rm "${img}" bash -c 'systemd-sysusers --root=/ && id svc | grep -q "uid=880(svc)" && id -nG svc | grep -qw render && id -nG svc | grep -qw video'
