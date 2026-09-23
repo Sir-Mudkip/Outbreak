@@ -49,5 +49,8 @@ SSH is closed on the LAN by design, so log in on the console, then:
    pasta network backend, Gluetun uses kernel WireGuard, the forwarded port
    is connectable, and tunnel speed is close to the host's. If it is slow,
    move only that pair to a rootful Quadlet (services plan).
-7. When the second SSD is fitted, create the libvirt storage pool on it
+7. Adding an SSH key later (e.g. a new laptop): copy its public key to a
+   machine that can already log in and run
+   `ssh-copy-id -f -i <key>.pub <user>@<tailscale-name>`.
+8. When the second SSD is fitted, create the libvirt storage pool on it
    (labs plan).
