@@ -2,6 +2,7 @@ export image_name := env("IMAGE_NAME", "outbreak")
 export default_tag := env("DEFAULT_TAG", "stable")
 export PODMAN := env("PODMAN", "podman")
 export REPO_ORG := env("GITHUB_REPOSITORY_OWNER", "sir-mudkip")
+export bib_image := env("BIB_IMAGE", "ghcr.io/osbuild/bootc-image-builder:latest@sha256:4cd0deb14fb7f14d54304a11b8b0769e47c6ba23733d2356b21ffafd34aba178")
 
 [private]
 default:
@@ -124,3 +125,48 @@ verify $tag=default_tag:
     #!/usr/bin/bash
     set -euo pipefail
     cosign verify --key cosign.pub "ghcr.io/${REPO_ORG,,}/${image_name}:${tag}"
+
+# Build an Anaconda installer ISO from the published image
+[group('Install')]
+build-iso $tag=default_tag:
+    #!/usr/bin/bash
+    set -euo pipefail
+    if [[ ! -f iso/config.toml ]]; then
+        echo "Create iso/config.toml from iso/config.example.toml first (see docs/install.md)"
+        exit 1
+    fi
+    if grep -qE 'your-username|your-password-hash|your-public-key' iso/config.toml; then
+        echo "iso/config.toml still has placeholder values"
+        exit 1
+    fi
+    ref="ghcr.io/${REPO_ORG,,}/${image_name}:${tag}"
+    sudo ${PODMAN} pull "${ref}"
+    mkdir -p output
+    sudo ${PODMAN} run --rm --privileged --pull=newer \
+        --security-opt label=type:unconfined_t \
+        -v ./iso/config.toml:/config.toml:ro \
+        -v ./output:/output \
+        -v /var/lib/containers/storage:/var/lib/containers/storage \
+        "${bib_image}" \
+        --type anaconda-iso \
+        --rootfs xfs \
+        --use-librepo=True \
+        "${ref}"
+    sudo chown -R "$(id -u):$(id -g)" output
+    ls -lh output/bootiso/install.iso
+
+# Install the ISO into a throwaway VM to test it (UEFI, 8 GB RAM, 80 GB disk)
+[group('Install')]
+test-install:
+    #!/usr/bin/bash
+    set -euo pipefail
+    if ! command -v virt-install >/dev/null; then
+        echo "virt-install not found. Create the VM in virt-manager instead:"
+        echo "  name outbreak-test, UEFI firmware, 8 GB RAM, 4 vCPUs, 80 GB disk,"
+        echo "  CD-ROM $(pwd)/output/bootiso/install.iso"
+        exit 1
+    fi
+    sudo virt-install --name outbreak-test --memory 8192 --vcpus 4 \
+        --disk size=80 --cdrom "$(pwd)/output/bootiso/install.iso" \
+        --osinfo fedora-unknown --boot uefi --graphics vnc --noautoconsole
+    echo "Open the console with: virt-viewer --connect qemu:///system outbreak-test"
