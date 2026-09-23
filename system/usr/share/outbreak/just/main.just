@@ -3,3 +3,5 @@ set ignore-comments
 
 _default:
     @ujust --list --list-heading $'Available commands:\n' --list-prefix $' - '
+
+import "/usr/share/outbreak/just/updates.just"

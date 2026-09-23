@@ -1,0 +1,16 @@
+#!/usr/bin/bash
+# Writes a login notice while a staged update is waiting for a reboot.
+set -euo pipefail
+
+MOTD="/run/motd.d/50-outbreak-update"
+status="$(bootc status --format=json)"
+staged="$(jq -r '.status.staged.image.image.image // empty' <<<"${status}")"
+
+if [[ -n "${staged}" ]]; then
+    version="$(jq -r '.status.staged.image.version // "unknown version"' <<<"${status}")"
+    install -d -m 0755 /run/motd.d
+    printf 'Outbreak update staged: %s (%s), checked %s.\nReboot when convenient to apply it: sudo systemctl reboot\n' \
+        "${version}" "${staged}" "$(date -u +%F)" >"${MOTD}"
+else
+    rm -f "${MOTD}"
+fi

@@ -79,4 +79,12 @@ if grep -q '^svc:' /etc/group; then
     echo "svc group must not be created during the build"; exit 1
 fi
 
+# --- Update staging (Task 6) ---
+systemctl is-enabled --quiet outbreak-stage-update.timer
+[[ "$(systemctl is-enabled bootc-fetch-apply-updates.timer || true)" == "masked" ]]
+test -x /usr/libexec/outbreak/update-motd
+bash -n /usr/libexec/outbreak/update-motd
+grep -qx 'ExecStart=/usr/bin/bootc upgrade --quiet' /usr/lib/systemd/system/outbreak-stage-update.service
+just --justfile /usr/share/outbreak/just/main.just --list | grep -c 'update-status' >/dev/null
+
 echo "::endgroup::"

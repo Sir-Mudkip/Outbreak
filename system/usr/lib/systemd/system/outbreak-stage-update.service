@@ -1,0 +1,11 @@
+[Unit]
+Description=Download and stage the latest Outbreak image (applied at the next reboot)
+Documentation=man:bootc-upgrade(8)
+ConditionPathExists=/run/ostree-booted
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bootc upgrade --quiet
+ExecStartPost=/usr/libexec/outbreak/update-motd
