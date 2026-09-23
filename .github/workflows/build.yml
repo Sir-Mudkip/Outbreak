@@ -1,0 +1,146 @@
+---
+name: Build container image
+on:
+  schedule:
+    - cron: '20 10 * * *'  # daily, to pick up Fedora updates
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - "**.md"
+  workflow_dispatch:
+
+# No pull_request trigger: images are only built from master.
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAME: outbreak
+  IMAGE_VENDOR: sir-mudkip
+  IMAGE_REGISTRY: ghcr.io/sir-mudkip
+  DEFAULT_TAG: stable
+
+jobs:
+  build_push:
+    name: Build and push image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup runner
+        uses: projectbluefin/actions/bootc-build/setup-runner@cbd8446f58a079e48f76d81d5bc1c2fdec95d592 # v1
+        with:
+          storage-backend: btrfs
+          update-podman: "true"
+          install-tools: '["just"]'
+
+      # Force podman onto native overlayfs; the runner image's config would
+      # route every layer diff through fuse-overlayfs (see Sivablue docs/ci.md).
+      - name: Use native overlayfs for podman storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo install -d -m 0755 /etc/containers
+          sudo tee /etc/containers/storage.conf >/dev/null <<'EOF'
+          [storage]
+          driver = "overlay"
+          runroot = "/run/containers/storage"
+          graphroot = "/var/lib/containers/storage"
+
+          [storage.options.overlay]
+          mountopt = "nodev,redirect_dir=off"
+          EOF
+          sudo podman system reset -f >/dev/null 2>&1 \
+            || sudo rm -rf /var/lib/containers/storage
+          NATIVE=$(sudo podman info --format '{{index .Store.GraphStatus "Native Overlay Diff"}}')
+          echo "Native Overlay Diff: ${NATIVE}"
+          if [ "${NATIVE}" != "true" ]; then
+            echo "::error::podman is not using native overlayfs"
+            exit 1
+          fi
+
+      - name: Restore DNF cache
+        uses: projectbluefin/actions/bootc-build/dnf-cache@cbd8446f58a079e48f76d81d5bc1c2fdec95d592 # v1
+        with:
+          action: restore
+          cache-name: ${{ env.IMAGE_NAME }}
+          cache-bust: ${{ hashFiles('**/Containerfile') }}
+
+      - name: Build image
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4
+        with:
+          timeout_minutes: 120
+          max_attempts: 3
+          retry_wait_seconds: 300
+          command: |
+            sudo -E "$(command -v just)" build "${IMAGE_NAME}" "${DEFAULT_TAG}"
+
+      - name: Post-build image checks
+        run: sudo -E "$(command -v just)" test-image "${IMAGE_NAME}" "${DEFAULT_TAG}"
+
+      - name: Generate tags
+        id: generate-tags
+        shell: bash
+        run: |
+          TAGS="${DEFAULT_TAG} $(date -u +%Y-%m-%d)"
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+          echo "default-tag=${DEFAULT_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Save DNF cache
+        if: always() && !cancelled()
+        uses: projectbluefin/actions/bootc-build/dnf-cache@cbd8446f58a079e48f76d81d5bc1c2fdec95d592 # v1
+        with:
+          action: save
+          cache-name: ${{ env.IMAGE_NAME }}
+          allow-write: 'true'
+          cache-bust: ${{ hashFiles('**/Containerfile') }}
+
+      - name: Rechunk image
+        uses: projectbluefin/actions/bootc-build/chunka@6231015b336556d2ff0adc1d1e59514bf19dcb42 # v1
+        with:
+          source-image: localhost/${{ env.IMAGE_NAME }}:${{ env.DEFAULT_TAG }}
+          max-layers: 128
+
+      - name: Tag images
+        env:
+          ALIAS_TAGS: ${{ steps.generate-tags.outputs.tags }}
+        run: |
+          sudo -E "$(command -v just)" tag-images "${IMAGE_NAME}" "${DEFAULT_TAG}" "${ALIAS_TAGS}"
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push to GHCR
+        uses: projectbluefin/actions/bootc-build/push-image@cbd8446f58a079e48f76d81d5bc1c2fdec95d592 # v1
+        with:
+          image-name: ${{ env.IMAGE_NAME }}
+          tags: ${{ steps.generate-tags.outputs.tags }}
+          default-tag: ${{ steps.generate-tags.outputs.default-tag }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+
+      - name: Sign container image
+        env:
+          TAGS: ${{ steps.generate-tags.outputs.tags }}
+          COSIGN_EXPERIMENTAL: false
+          COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
+        run: |
+          for tag in ${TAGS}; do
+            cosign sign -y --key env://COSIGN_PRIVATE_KEY "${IMAGE_REGISTRY}/${IMAGE_NAME}:${tag}"
+          done

@@ -76,6 +76,23 @@ build $target_image=image_name $tag=default_tag:
     )
     ${PODMAN} build "${BUILD_ARGS[@]}" "${LABELS[@]}" --pull=newer --tag "${target_image}:${tag}" .
 
+# Apply alias tags to the built image
+[group('Image')]
+tag-images $image_name="" $default_tag="" $tags="":
+    #!/usr/bin/bash
+    set -eou pipefail
+    if [[ -z "${image_name}" || -z "${default_tag}" || -z "${tags}" ]]; then
+        echo "Usage: just tag-images <image_name> <default_tag> <tags>"
+        exit 1
+    fi
+    IMAGE=$(${PODMAN} inspect "localhost/${image_name}:${default_tag}" | jq -r '.[].Id')
+    ${PODMAN} untag "localhost/${image_name}:${default_tag}"
+    for tag in ${tags}; do
+        ${PODMAN} tag "${IMAGE}" "${image_name}:${tag}"
+    done
+    ${PODMAN} tag "${IMAGE}" "${image_name}:${default_tag}"
+    echo "Tagged ${image_name} with: ${tags}"
+
 # Remove images this repo builds (run at the end of every session)
 [group('Image')]
 clean-images:
