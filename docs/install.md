@@ -9,9 +9,9 @@
    openssl passwd -6          # paste the hash into password = "..."
    ```
 
-   Then set `name` to your username and `key` to the SSH public key you will
-   log in with (e.g. `~/.ssh/<name>.pub`). The password is needed for console
-   login and `sudo`; SSH itself stays key-only.
+   Then set `name` to your username and put every SSH public key you will log
+   in with in `key`, one per line (e.g. desktop and laptop). The password is
+   needed for console login and `sudo`; SSH itself stays key-only.
 2. `just build-iso` builds `output/bootiso/install.iso` from
    `ghcr.io/sir-mudkip/outbreak:stable` with bootc-image-builder
    (`ghcr.io/osbuild/bootc-image-builder`, the compatibility container of

@@ -135,7 +135,7 @@ build-iso $tag=default_tag:
         echo "Create iso/config.toml from iso/config.example.toml first (see docs/install.md)"
         exit 1
     fi
-    if grep -qE 'your-username|your-password-hash|your-public-key' iso/config.toml; then
+    if grep -qE 'your-username|your-password-hash|public-key\.\.\.' iso/config.toml; then
         echo "iso/config.toml still has placeholder values"
         exit 1
     fi

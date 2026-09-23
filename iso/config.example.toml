@@ -6,5 +6,9 @@
 name = "your-username"
 # Needed for console login and sudo. Generate with: openssl passwd -6
 password = "$6$...your-password-hash..."
-key = "ssh-ed25519 AAAA...your-public-key... you@your-machine"
+# One public key per line (e.g. desktop and laptop).
+key = """
+ssh-ed25519 AAAA...your-desktop-public-key... you@desktop
+ssh-ed25519 AAAA...your-laptop-public-key... you@laptop
+"""
 groups = ["wheel", "libvirt", "render", "video"]
