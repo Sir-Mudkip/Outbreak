@@ -1,6 +1,5 @@
 # Copy to iso/config.toml (gitignored) and fill in your user, password hash and
-# SSH key. See docs/install.md. Anaconda asks which disk to install to: pick
-# the Samsung 990 Pro.
+# SSH key. See docs/install.md.
 
 [[customizations.user]]
 name = "your-username"

@@ -16,6 +16,7 @@ Rules live here; the reasoning behind them lives in `docs/` (index: `docs/README
 - Never commit `cosign.key` or `iso/config.toml`.
 - Conventional commits (`<type>(<scope>): <description>`), with `Assisted-by: <Model> via <Tool>` in the footer for AI-assisted commits.
 - Run `just clean-images` at the end of every session that built images.
+- Treat the machine you work as if you're a guest in someone's home. You keep the machine clean, and anything you install, or write to the file system is removed when the work is done. Once a session is over, the machine should be left in the state you found it in.
 
 ## Validation
 
