@@ -5,28 +5,10 @@ echo "::group:: ===$(basename "$0")==="
 set -eoux pipefail
 
 # just runs ujust. The svc account, its linger file and subordinate IDs come
-# from system/ (sysusers.d, tmpfiles.d, /etc/subuid, /etc/subgid).
+# from system/ (sysusers.d, tmpfiles.d, /etc/subuid, /etc/subgid). build.sh
+# installs the sysusers.d file after all package stages, so svc is created at
+# first boot rather than baked into the image.
 dnf5 -y install --setopt=install_weak_deps=False just
-
-# Some packages' RPM scriptlets (e.g. pcp) eagerly invoke systemd-sysusers
-# for every pending sysusers.d file as a side effect of their own install.
-# This creates svc mid-build, before render/video are promoted to /etc/group
-# below, leaving its group membership incomplete. Strip it so the account is
-# created cleanly, with full group membership, by systemd-sysusers at first
-# real boot instead (see docs/build-stages.md). userdel/groupdel also strip
-# matching /etc/subuid and /etc/subgid entries, which this image ships on
-# purpose, so edit the account databases directly.
-sed -i '/^svc:/d' /etc/passwd /etc/shadow /etc/group /etc/gshadow
-# Also drop svc from the render/video member lists, in case a premature run
-# above did add it there before the groups were real /etc/group entries.
-sed -i -E '
-/^(render|video):/ {
-    s/:svc,/:/
-    s/:svc$/:/
-    s/,svc,/,/
-    s/,svc$//
-}
-' /etc/group /etc/gshadow
 
 # render and video are ostree/bootc vendor-default groups: they only exist in
 # /usr/lib/group (resolved via nss-altfiles; see nsswitch.conf), not

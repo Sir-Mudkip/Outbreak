@@ -69,14 +69,17 @@ just --justfile /usr/share/outbreak/just/main.just --list >/dev/null
 # member of them at boot.
 grep -q '^render:' /etc/group
 grep -q '^video:' /etc/group
-# svc must not be baked into the image; some package's RPM scriptlet can
-# create it prematurely mid-build, and 40-services.sh must strip that so the
-# account is created cleanly by systemd-sysusers at first real boot.
+# svc must not be baked into the image. RPM scriptlets that run
+# systemd-sysusers would create it if its sysusers.d file were present during
+# package installs; build.sh installs that file after the package stages.
 if grep -q '^svc:' /etc/passwd; then
     echo "svc must not be created during the build"; exit 1
 fi
 if grep -q '^svc:' /etc/group; then
     echo "svc group must not be created during the build"; exit 1
+fi
+if grep -Eq '^(render|video):.*svc' /etc/group; then
+    echo "svc must not be added to render/video during the build"; exit 1
 fi
 
 # --- Update staging (Task 6) ---

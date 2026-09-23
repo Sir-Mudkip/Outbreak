@@ -8,6 +8,7 @@ Rules live here; the reasoning behind them lives in `docs/` (index: `docs/README
 
 - Static files go in `system/` (mirrored into `/usr` and `/etc`). Anything that runs goes in a `build/NN-name.sh` stage.
 - `build/build.sh` calls stages **by name**. A new stage must be added there or it never runs.
+- `system/usr/lib/sysusers.d/` files are installed by `build.sh` after the package stages, so no RPM scriptlet creates the accounts mid-build. Any new stage that installs packages goes before that step.
 - Stage boilerplate: `#!/usr/bin/bash`, `set -eoux pipefail`, `::group::`/`::endgroup::` markers, mode 0755.
 - `dnf5 -y install --setopt=install_weak_deps=False …` only. Never `dnf`, `yum` or `rpm-ostree`.
 - Add a check to `build/99-tests.sh` for everything you add. It runs after the clean stage: never write under `/var` or `$HOME` there.
